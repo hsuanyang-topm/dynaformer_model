@@ -1,6 +1,11 @@
 # set -o xtrace
 # set -x
 ulimit -c unlimited
+ROOT_DIR=$(realpath "$(dirname "$0")/../..")
+if [ -f "/root/miniconda3/etc/profile.d/conda.sh" ]; then
+  . /root/miniconda3/etc/profile.d/conda.sh
+  conda activate base
+fi
 [ -z "${n_gpu}" ] && n_gpu=$(nvidia-smi -L | wc -l)
 [ -z "${lr}" ] && lr=1e-4
 [ -z "${end_lr}" ] && end_lr=1e-9
@@ -17,9 +22,25 @@ ulimit -c unlimited
 [ -z "${warmup_steps}" ] && warmup_steps=$((total_steps*10/100))
 [ -z "${seed}" ] && seed=2022
 
-[ -z "${dataset_name}" ] && dataset_name="hybrid:set_name=md-refined2019-5-5-5+general-set-2019-coreset-2016,cutoffs=5-5-5,seed=2022"
-[ -z "${data_path}" ] && data_path=$(realpath ~/dataset)
-[ -z "${save_path}" ] && save_path=$(realpath ~)
+[ -z "${dataset_name}" ] && dataset_name="hybrid:set_name=md-refined2019-5-5-5+general-set-2020-coreset-2016,cutoffs=5-5-5,seed=2022"
+if [ -z "${data_path}" ]; then
+  if [ -d "$ROOT_DIR/Dataset" ]; then
+    data_path=$(realpath "$ROOT_DIR/Dataset")
+  elif [ -d "/home/hyang/Dynafomer/Dataset" ]; then
+    data_path="/home/hyang/Dynafomer/Dataset"
+  elif [ -d "/root/dataset" ]; then
+    data_path="/root/dataset"
+  else
+    data_path=""
+  fi
+fi
+if [ -z "${save_path}" ]; then
+  if [ -d "$ROOT_DIR/Train" ]; then
+    save_path=$(realpath "$ROOT_DIR/Train")
+  else
+    save_path="/root"
+  fi
+fi
 [ -z "${dropout}" ] && dropout=0.1
 [ -z "${act_dropout}" ] && act_dropout=0.1
 [ -z "${attn_dropout}" ] && attn_dropout=0.1
@@ -44,7 +65,7 @@ ulimit -c unlimited
 
 [ -z "${fingerprint}" ] && fingerprint="true"
 
-[ -z "${test_set}" ] && test_set="pdbbind:set_name=refined-set-2019-coreset-2016,cutoffs=5-5-5,seed=2022"
+[ -z "${test_set}" ] && test_set="pdbbind:set_name=refined-set-2020-coreset-2013,cutoffs=5-5-5,seed=2022"
 [ -z "${ddp_options}" ] && ddp_options=""
 
 
@@ -152,9 +173,11 @@ echo "action_args: ${action_args}"
 echo "========================================================================================"
 
 
-python -m torch.distributed.launch --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
-  $(which fairseq-train) \
-  --user-dir "$(realpath ./dynaformer)" \
+export PYTHONPATH="$ROOT_DIR/fairseq:$PYTHONPATH"
+
+torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
+  -m fairseq_cli.train \
+  --user-dir "$ROOT_DIR/dynaformer" \
   --num-workers 16 --ddp-backend=legacy_ddp \
   --dataset-name "$dataset_name" \
   --dataset-source pyg --data-path "$data_path" \
