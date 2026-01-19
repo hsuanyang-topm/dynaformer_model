@@ -12,8 +12,8 @@ torch._C._jit_override_can_fuse_on_cpu(True)
 torch._C._jit_override_can_fuse_on_gpu(True)
 
 
-@torch.jit.script
 def gaussian(x, mean, std):
+    # Avoid TorchScript here; it has triggered CUDA invalid argument in backward on some setups.
     pi = 3.14159
     a = (2*pi) ** 0.5
     return torch.exp(-0.5 * (((x - mean) / std) ** 2)) / (a * std)

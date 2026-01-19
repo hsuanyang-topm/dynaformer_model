@@ -41,11 +41,24 @@ class GraphPredictionL1Loss(FairseqCriterion):
         loss = nn.MSELoss(reduction="none")(logits, targets_normalize[: logits.size(0)])
         loss = (loss * weights).sum()
 
+        y_true = targets_normalize[: logits.size(0)].reshape(-1)
+        y_pred = logits.reshape(-1)
+        weights_flat = weights.reshape(-1)
+        err = y_pred - y_true
+        sum_w = weights_flat.sum()
+        sum_wy = (weights_flat * y_true).sum()
+        sum_wy2 = (weights_flat * y_true * y_true).sum()
+        sum_werr2 = (weights_flat * err * err).sum()
+
         logging_output = {
             "loss": loss.data,
             "sample_size": logits.size(0),
             "nsentences": sample_size,
             "ntokens": natoms,
+            "sum_w": sum_w,
+            "sum_wy": sum_wy,
+            "sum_wy2": sum_wy2,
+            "sum_werr2": sum_werr2,
         }
         return loss, sample_size, logging_output
 
@@ -54,8 +67,22 @@ class GraphPredictionL1Loss(FairseqCriterion):
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
+        sum_w = sum(log.get("sum_w", 0) for log in logging_outputs)
+        sum_wy = sum(log.get("sum_wy", 0) for log in logging_outputs)
+        sum_wy2 = sum(log.get("sum_wy2", 0) for log in logging_outputs)
+        sum_werr2 = sum(log.get("sum_werr2", 0) for log in logging_outputs)
 
         metrics.log_scalar("loss", loss_sum / sample_size, sample_size, round=6)
+        sum_w_value = float(sum_w) if torch.is_tensor(sum_w) else sum_w
+        if sum_w_value > 0:
+            mean_y = sum_wy / sum_w
+            sst = sum_wy2 - sum_w * mean_y * mean_y
+            sst_value = float(sst) if torch.is_tensor(sst) else sst
+            if sst_value > 0:
+                r2 = 1.0 - (sum_werr2 / sst)
+            else:
+                r2 = 0.0
+            metrics.log_scalar("r2", r2, sum_w, round=6)
 
     @staticmethod
     def logging_outputs_can_be_summed() -> bool:
@@ -99,10 +126,23 @@ class GraphPredictionL1LossWithFlag(GraphPredictionL1Loss):
         loss = nn.MSELoss(reduction="none")(logits, targets_normalize[: logits.size(0)])
         loss = (loss * weights).sum()
 
+        y_true = targets_normalize[: logits.size(0)].reshape(-1)
+        y_pred = logits.reshape(-1)
+        weights_flat = weights.reshape(-1)
+        err = y_pred - y_true
+        sum_w = weights_flat.sum()
+        sum_wy = (weights_flat * y_true).sum()
+        sum_wy2 = (weights_flat * y_true * y_true).sum()
+        sum_werr2 = (weights_flat * err * err).sum()
+
         logging_output = {
             "loss": loss.data,
             "sample_size": logits.size(0),
             "nsentences": sample_size,
             "ntokens": natoms,
+            "sum_w": sum_w,
+            "sum_wy": sum_wy,
+            "sum_wy2": sum_wy2,
+            "sum_werr2": sum_werr2,
         }
         return loss, sample_size, logging_output

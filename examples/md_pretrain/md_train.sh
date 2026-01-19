@@ -1,12 +1,32 @@
 # set -o xtrace
 # set -x
+
 ulimit -c unlimited
 ROOT_DIR=$(realpath "$(dirname "$0")/../..")
 if [ -f "/root/miniconda3/etc/profile.d/conda.sh" ]; then
   . /root/miniconda3/etc/profile.d/conda.sh
-  conda activate base
+  conda activate dynaformer_py39
+  export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+  export LD_LIBRARY_PATH=$CONDA_PREFIX/lib/python3.9/site-packages/torch/lib:$LD_LIBRARY_PATH
 fi
-[ -z "${n_gpu}" ] && n_gpu=$(nvidia-smi -L | wc -l)
+if [ -z "${n_gpu}" ]; then
+  if [ -n "${CUDA_VISIBLE_DEVICES}" ]; then
+    n_gpu=$(echo "${CUDA_VISIBLE_DEVICES}" | awk -F',' '{print NF}')
+  else
+    n_gpu=$(python - <<'PY'
+import torch
+print(torch.cuda.device_count())
+PY
+)
+    if [ -z "$n_gpu" ] || [ "$n_gpu" -eq 0 ]; then
+      n_gpu=$(nvidia-smi -L | wc -l)
+    fi
+    if [ "$n_gpu" -gt 0 ]; then
+      CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((n_gpu - 1)))
+      export CUDA_VISIBLE_DEVICES
+    fi
+  fi
+fi
 [ -z "${lr}" ] && lr=1e-4
 [ -z "${end_lr}" ] && end_lr=1e-9
 [ -z "${max_epoch}" ] && max_epoch=100
@@ -14,26 +34,55 @@ fi
 [ -z "${hidden_size}" ] && hidden_size=512
 [ -z "${ffn_size}" ] && ffn_size=512
 [ -z "${num_head}" ] && num_head=32
-[ -z "${batch_size}" ] && batch_size=20
+[ -z "${batch_size}" ] && batch_size=3
 [ -z "${clip_norm}" ] && clip_norm=5
+[ -z "${num_workers}" ] && num_workers=16
 
 [ -z "${update_freq}" ] && update_freq=1
-[ -z "${total_steps}" ] && total_steps=$((320000*(max_epoch+1)/batch_size/n_gpu/update_freq))
+[ -z "${total_steps}" ] && total_steps=$((20000*(max_epoch+1)/batch_size/n_gpu/update_freq))
 [ -z "${warmup_steps}" ] && warmup_steps=$((total_steps*10/100))
 [ -z "${seed}" ] && seed=2022
 
-[ -z "${dataset_name}" ] && dataset_name="hybrid:set_name=md-refined2019-5-5-5+general-set-2020-coreset-2016,cutoffs=5-5-5,seed=2022"
+[ -z "${dataset_name}" ] && dataset_name="mddata:set_name=md-refined2026-5-5-5,seed=2022"
 if [ -z "${data_path}" ]; then
   if [ -d "$ROOT_DIR/Dataset" ]; then
     data_path=$(realpath "$ROOT_DIR/Dataset")
-  elif [ -d "/home/hyang/Dynafomer/Dataset" ]; then
-    data_path="/home/hyang/Dynafomer/Dataset"
-  elif [ -d "/root/dataset" ]; then
-    data_path="/root/dataset"
+  elif [ -d "/home/hyang/Dataset/output" ]; then
+    data_path="/home/hyang/Dataset/output"
+  # elif [ -d "/root/dataset" ]; then
+  #   data_path="/root/dataset"
+  elif [ -d "/home/hyang/Dynaformer/output" ]; then
+    data_path="/home/hyang/Dynaformer/output"
   else
     data_path=""
   fi
 fi
+if [ -z "${require_processed}" ]; then
+  require_processed=true
+fi
+# if [ "$require_processed" = "true" ] && [ -n "$data_path" ]; then
+#   if [[ "$dataset_name" == mddata:* ]]; then
+#     set_name=$(echo "$dataset_name" | sed -n 's/.*set_name=\([^,]*\).*/\1/p')
+#     if [ -z "$set_name" ]; then
+#       echo "ERROR: cannot parse set_name from dataset_name=$dataset_name"
+#       exit 1
+#     fi
+#     train_pkl="${data_path}/processed_${set_name}_train.pkl"
+#     valid_pkl="${data_path}/processed_${set_name}_valid.pkl"
+#     test_pkl="${data_path}/processed_${set_name}_test.pkl"
+#     missing=0
+#     for f in "$train_pkl" "$valid_pkl" "$test_pkl"; do
+#       if [ ! -f "$f" ]; then
+#         echo "ERROR: missing processed file: $f"
+#         missing=1
+#       fi
+#     done
+#     if [ "$missing" -ne 0 ]; then
+#       echo "ERROR: processed mddata files are missing; refusing to auto-process."
+#       exit 1
+#     fi
+#   fi
+# fi
 if [ -z "${save_path}" ]; then
   if [ -d "$ROOT_DIR/Train" ]; then
     save_path=$(realpath "$ROOT_DIR/Train")
@@ -59,13 +108,14 @@ fi
 [ -z "${dist_head}" ] && dist_head="gbf3d"
 [ -z "${num_dist_head_kernel}" ] && num_dist_head_kernel=256
 [ -z "${num_edge_types}" ] && num_edge_types=$((512*32))
+[ -z "${max_nodes}" ] && max_nodes=1500
 [ -z "${task}" ] && task="graph_prediction"
 [ -z "${loss}" ] && loss="l2_loss"
 [ -z "${patience}" ] && patience="50"
 
 [ -z "${fingerprint}" ] && fingerprint="true"
 
-[ -z "${test_set}" ] && test_set="pdbbind:set_name=refined-set-2020-coreset-2013,cutoffs=5-5-5,seed=2022"
+[ -z "${test_set}" ] && test_set="mddata:set_name=md-refined2026-5-5-5,seed=2022"
 [ -z "${ddp_options}" ] && ddp_options=""
 
 
@@ -108,6 +158,7 @@ echo "=====================================ARGS=================================
 echo "arg0: $0"
 echo "seed: ${seed}"
 echo "batch_size: $((batch_size*n_gpu*update_freq))"
+echo "num_workers: ${num_workers}"
 echo "n_layers: ${layers}"
 echo "lr: ${lr}"
 echo "warmup_steps: ${warmup_steps}"
@@ -133,6 +184,7 @@ echo "data_dir: ${data_path}"
 echo "dist_head: ${dist_head}"
 echo "num_dist_head_kernel: $num_dist_head_kernel"
 echo "num_edge_types: $num_edge_types"
+echo "max_nodes: $max_nodes"
 echo "==============================================================================="
 
 # ENV
@@ -178,10 +230,10 @@ export PYTHONPATH="$ROOT_DIR/fairseq:$PYTHONPATH"
 torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
   -m fairseq_cli.train \
   --user-dir "$ROOT_DIR/dynaformer" \
-  --num-workers 16 --ddp-backend=legacy_ddp \
+  --num-workers ${num_workers} --ddp-backend=legacy_ddp \
   --dataset-name "$dataset_name" \
   --dataset-source pyg --data-path "$data_path" \
-  --batch-size $batch_size --data-buffer-size 20 \
+  --batch-size $batch_size --data-buffer-size 50 \
   --task $task --criterion $loss --arch graphormer_base --num-classes 1 \
   --lr $lr --end-learning-rate $end_lr --lr-scheduler polynomial_decay --power 1 \
   --warmup-updates $warmup_steps --total-num-update $total_steps --max-update $total_steps --update-freq $update_freq --patience $patience \
@@ -190,5 +242,5 @@ torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
   --attention-dropout $attn_dropout --act-dropout $act_dropout --dropout $dropout --weight-decay $weight_decay \
   --optimizer adam --adam-betas $adam_betas --adam-eps $adam_eps $action_args --clip-norm $clip_norm \
   --fp16 --save-dir "$save_dir" --tensorboard-logdir $tsb_dir --seed $seed \
-  --max-nodes 600 --dist-head $dist_head \
+  --max-nodes $max_nodes --dist-head $dist_head \
   --num-dist-head-kernel $num_dist_head_kernel --num-edge-types $num_edge_types 2>&1 | tee "$save_dir/train_log.txt"

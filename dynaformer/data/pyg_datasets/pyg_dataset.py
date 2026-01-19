@@ -104,3 +104,10 @@ class GraphormerPYGDataset(Dataset):
 
     def __len__(self):
         return self.num_data
+
+    # torch_geometric Dataset abstract methods (v2+ expects these)
+    def len(self):
+        return self.__len__()
+
+    def get(self, idx):
+        return self.__getitem__(idx)

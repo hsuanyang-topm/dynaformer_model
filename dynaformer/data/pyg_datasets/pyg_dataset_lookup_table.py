@@ -7,6 +7,7 @@ from .pyg_dataset import GraphormerPYGDataset
 import torch.distributed as dist
 from torch_geometric.data import InMemoryDataset, download_url, extract_zip
 import torch
+import os
 import pickle
 import shutil
 from pathlib import Path
@@ -31,7 +32,7 @@ class MDDataset(InMemoryDataset):
         self.set_name = set_name
         self.split = split
         self.seed = int(seed)
-        assert set_name.startswith("md-refined2019")
+        assert set_name.startswith("md-refined2019") or set_name.startswith("md-refined2026")
         assert split in ["train", "valid", "test"]
         super().__init__(root, transform, pre_transform, pre_filter)
 
@@ -62,7 +63,7 @@ class MDDataset(InMemoryDataset):
     def download(self):
         if not dist.is_initialized() or process_num_on_node() == 0:
             # print(f"This is rank {dist.get_rank()} / {dist.get_world_size()}")
-            shutil.rmtree(self.raw_dir)
+            os.makedirs(self.raw_dir, exist_ok=True)
             path = download_url(self.url.format(self.set_name), self.root)
             extract_zip(path, self.root)
         if dist.is_initialized():
@@ -138,7 +139,7 @@ class PDBBind(InMemoryDataset):
 
     def download(self):
         if not dist.is_initialized() or process_num_on_node() == 0:
-            shutil.rmtree(self.raw_dir)
+            os.makedirs(self.raw_dir, exist_ok=True)
             path = download_url(self.url.format(self.set_name), self.root)
             extract_zip(path, self.root)
         if dist.is_initialized():

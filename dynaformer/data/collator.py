@@ -114,10 +114,16 @@ def gen_node_type_edge(items, max_node_num):
 
 
 def collator(items, max_node=512, multi_hop_max_dist=20, spatial_pos_max=20):
+    original_items = items
     original_len = len(items)
     items = [item for item in items if item is not None and item.x.size(0) <= max_node]
     filtered_len = len(items)
-    assert filtered_len == original_len, f"filtered_len = {filtered_len}, original_len = {original_len}"
+    if filtered_len == 0:
+        sizes = [int(item.x.size(0)) for item in original_items if item is not None]
+        raise ValueError(
+            "All items filtered by max_node. Increase --max-nodes. "
+            f"max_node={max_node}, sizes={sizes}"
+        )
 
     max_node_num = max(i.x.size(0) for i in items)
     num_node = torch.stack([item.num_node for item in items])
