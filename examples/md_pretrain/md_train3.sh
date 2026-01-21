@@ -34,16 +34,16 @@ fi
 [ -z "${hidden_size}" ] && hidden_size=512
 [ -z "${ffn_size}" ] && ffn_size=2048
 [ -z "${num_head}" ] && num_head=32
-[ -z "${batch_size}" ] && batch_size=3
-[ -z "${clip_norm}" ] && clip_norm=2
+[ -z "${batch_size}" ] && batch_size=2
+[ -z "${clip_norm}" ] && clip_norm=5
 [ -z "${num_workers}" ] && num_workers=16
 
-[ -z "${update_freq}" ] && update_freq=2
+[ -z "${update_freq}" ] && update_freq=3
 [ -z "${total_steps}" ] && total_steps=$((20000*(max_epoch+1)/batch_size/n_gpu/update_freq))
 [ -z "${warmup_steps}" ] && warmup_steps=$((total_steps*10/100))
 [ -z "${seed}" ] && seed=2022
 
-[ -z "${dataset_name}" ] && dataset_name="mddata:set_name=md-refined2026-5-5-5,seed=2022"
+[ -z "${dataset_name}" ] && dataset_name="mddata:set_name=md-refined2026-6-6-6,seed=2022"
 if [ -z "${data_path}" ]; then
   if [ -d "$ROOT_DIR/Dataset" ]; then
     data_path=$(realpath "$ROOT_DIR/Dataset")
@@ -87,13 +87,13 @@ if [ -z "${save_path}" ]; then
   if [ -d "$ROOT_DIR/Train" ]; then
     save_path=$(realpath "$ROOT_DIR/Train")
   else
-    save_path="/root"
+    save_path="/root/projects/Dynaformer/output"
   fi
 fi
 [ -z "${dropout}" ] && dropout=0.3
 [ -z "${act_dropout}" ] && act_dropout=0.2
 [ -z "${attn_dropout}" ] && attn_dropout=0.2
-[ -z "${weight_decay}" ] && weight_decay=0.05
+[ -z "${weight_decay}" ] && weight_decay=0.01
 [ -z "${sandwich_ln}" ] && sandwich_ln="false"
 
 [ -z "${adam_betas}" ] && adam_betas="(0.9,0.999)"
@@ -108,14 +108,14 @@ fi
 [ -z "${dist_head}" ] && dist_head="gbf3d"
 [ -z "${num_dist_head_kernel}" ] && num_dist_head_kernel=256
 [ -z "${num_edge_types}" ] && num_edge_types=$((512*32))
-[ -z "${max_nodes}" ] && max_nodes=1500
+[ -z "${max_nodes}" ] && max_nodes=1600
 [ -z "${task}" ] && task="graph_prediction"
 [ -z "${loss}" ] && loss="l2_loss"
 [ -z "${patience}" ] && patience="50"
 
 [ -z "${fingerprint}" ] && fingerprint="true"
 
-[ -z "${test_set}" ] && test_set="mddata:set_name=md-refined2026-5-5-5,seed=2022"
+[ -z "${test_set}" ] && test_set="mddata:set_name=md-refined2026-6-6-6,seed=2022"
 [ -z "${ddp_options}" ] && ddp_options=""
 
 
@@ -233,7 +233,7 @@ torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
   --num-workers ${num_workers} --ddp-backend=legacy_ddp \
   --dataset-name "$dataset_name" \
   --dataset-source pyg --data-path "$data_path" \
-  --batch-size $batch_size --data-buffer-size 50 \
+  --batch-size $batch_size --data-buffer-size 40 \
   --task $task --criterion $loss --arch graphormer_base --num-classes 1 \
   --lr $lr --end-learning-rate $end_lr --lr-scheduler polynomial_decay --power 1 \
   --warmup-updates $warmup_steps --total-num-update $total_steps --max-update $total_steps --update-freq $update_freq --patience $patience \
@@ -243,5 +243,4 @@ torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
   --optimizer adam --adam-betas $adam_betas --adam-eps $adam_eps $action_args --clip-norm $clip_norm \
   --bf16 --save-dir "$save_dir" --tensorboard-logdir $tsb_dir --seed $seed \
   --max-nodes $max_nodes --dist-head $dist_head \
-  --layerdrop 0.1 --store-ema --ema-decay 0.999\
   --num-dist-head-kernel $num_dist_head_kernel --num-edge-types $num_edge_types 2>&1 | tee "$save_dir/train_log.txt"

@@ -27,7 +27,7 @@ PY
     fi
   fi
 fi
-[ -z "${lr}" ] && lr=1e-4
+[ -z "${lr}" ] && lr=5e-5
 [ -z "${end_lr}" ] && end_lr=1e-9
 [ -z "${max_epoch}" ] && max_epoch=100
 [ -z "${layers}" ] && layers=6
@@ -90,10 +90,10 @@ if [ -z "${save_path}" ]; then
     save_path="/root"
   fi
 fi
-[ -z "${dropout}" ] && dropout=0.3
-[ -z "${act_dropout}" ] && act_dropout=0.2
-[ -z "${attn_dropout}" ] && attn_dropout=0.2
-[ -z "${weight_decay}" ] && weight_decay=0.05
+[ -z "${dropout}" ] && dropout=0.2
+[ -z "${act_dropout}" ] && act_dropout=0.1
+[ -z "${attn_dropout}" ] && attn_dropout=0.1
+[ -z "${weight_decay}" ] && weight_decay=0.01
 [ -z "${sandwich_ln}" ] && sandwich_ln="false"
 
 [ -z "${adam_betas}" ] && adam_betas="(0.9,0.999)"
@@ -101,7 +101,7 @@ fi
 
 [ -z "${save_prefix}" ] && save_prefix="MD"
 [ -z "${flag}" ] && flag=true
-[ -z "${flag_m}" ] && flag_m=3
+[ -z "${flag_m}" ] && flag_m=5
 [ -z "${flag_step_size}" ] && flag_step_size=0.001
 [ -z "${flag_mag}" ] && flag_mag=0.01
 
@@ -236,12 +236,16 @@ torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
   --batch-size $batch_size --data-buffer-size 50 \
   --task $task --criterion $loss --arch graphormer_base --num-classes 1 \
   --lr $lr --end-learning-rate $end_lr --lr-scheduler polynomial_decay --power 1 \
-  --warmup-updates $warmup_steps --total-num-update $total_steps --max-update $total_steps --update-freq $update_freq --patience $patience \
+  --warmup-updates $warmup_steps --total-num-update $total_steps --max-update $total_steps \
+  --update-freq $update_freq --patience $patience \
   --encoder-layers $layers --encoder-attention-heads $num_head \
   --encoder-embed-dim $hidden_size --encoder-ffn-embed-dim $ffn_size \
-  --attention-dropout $attn_dropout --act-dropout $act_dropout --dropout $dropout --weight-decay $weight_decay \
-  --optimizer adam --adam-betas $adam_betas --adam-eps $adam_eps $action_args --clip-norm $clip_norm \
+  --attention-dropout $attn_dropout --act-dropout $act_dropout --dropout $dropout \
+  --weight-decay $weight_decay \
+  --optimizer adam --adam-betas $adam_betas --adam-eps $adam_eps $action_args \
+  --clip-norm $clip_norm \
   --bf16 --save-dir "$save_dir" --tensorboard-logdir $tsb_dir --seed $seed \
   --max-nodes $max_nodes --dist-head $dist_head \
-  --layerdrop 0.1 --store-ema --ema-decay 0.999\
-  --num-dist-head-kernel $num_dist_head_kernel --num-edge-types $num_edge_types 2>&1 | tee "$save_dir/train_log.txt"
+  --num-dist-head-kernel $num_dist_head_kernel --num-edge-types $num_edge_types \
+  --layerdrop 0.1 \
+  2>&1 | tee "$save_dir/train_log.txt"

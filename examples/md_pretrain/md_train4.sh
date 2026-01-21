@@ -27,7 +27,7 @@ PY
     fi
   fi
 fi
-[ -z "${lr}" ] && lr=1e-4
+[ -z "${lr}" ] && lr=3e-5
 [ -z "${end_lr}" ] && end_lr=1e-9
 [ -z "${max_epoch}" ] && max_epoch=100
 [ -z "${layers}" ] && layers=6
@@ -38,7 +38,7 @@ fi
 [ -z "${clip_norm}" ] && clip_norm=2
 [ -z "${num_workers}" ] && num_workers=16
 
-[ -z "${update_freq}" ] && update_freq=2
+[ -z "${update_freq}" ] && update_freq=3
 [ -z "${total_steps}" ] && total_steps=$((20000*(max_epoch+1)/batch_size/n_gpu/update_freq))
 [ -z "${warmup_steps}" ] && warmup_steps=$((total_steps*10/100))
 [ -z "${seed}" ] && seed=2022
@@ -90,10 +90,10 @@ if [ -z "${save_path}" ]; then
     save_path="/root"
   fi
 fi
-[ -z "${dropout}" ] && dropout=0.3
-[ -z "${act_dropout}" ] && act_dropout=0.2
-[ -z "${attn_dropout}" ] && attn_dropout=0.2
-[ -z "${weight_decay}" ] && weight_decay=0.05
+[ -z "${dropout}" ] && dropout=0.2
+[ -z "${act_dropout}" ] && act_dropout=0.1
+[ -z "${attn_dropout}" ] && attn_dropout=0.1
+[ -z "${weight_decay}" ] && weight_decay=0.01
 [ -z "${sandwich_ln}" ] && sandwich_ln="false"
 
 [ -z "${adam_betas}" ] && adam_betas="(0.9,0.999)"
@@ -243,5 +243,4 @@ torchrun --nproc_per_node=${n_gpu} --master_port 29501 ${ddp_options} \
   --optimizer adam --adam-betas $adam_betas --adam-eps $adam_eps $action_args --clip-norm $clip_norm \
   --bf16 --save-dir "$save_dir" --tensorboard-logdir $tsb_dir --seed $seed \
   --max-nodes $max_nodes --dist-head $dist_head \
-  --layerdrop 0.1 --store-ema --ema-decay 0.999\
   --num-dist-head-kernel $num_dist_head_kernel --num-edge-types $num_edge_types 2>&1 | tee "$save_dir/train_log.txt"
